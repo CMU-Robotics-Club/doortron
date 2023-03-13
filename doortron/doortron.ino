@@ -3,8 +3,8 @@
 #include <ESP8266HTTPClient.h>
 #include <WiFiClient.h>
 
-#define M_URL0 "http://doortron.roboclub.org/doortron_update.php?key=&status=0"
-#define M_URL1 "http://doortron.roboclub.org/doortron/_update.php?key=&status=1"
+#define M_URL0 "http://doortron.roboclub.org/update/KEYREMOVED/0"
+#define M_URL1 "http://doortron.roboclub.org/update/KEYREMOVED/1"
 
 void setup() {
 

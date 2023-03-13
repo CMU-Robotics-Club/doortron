@@ -1,0 +1,58 @@
+<html>
+<head>
+    <title>Doortron</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta http-equiv="refresh" content="30">
+
+    <style>
+        p {
+            width: 100%;
+            text-align: center;
+            margin-top: 0;
+            margin-bottom: 0;
+            color: white;
+            opacity: 0.8;
+            font-family: sans-serif;
+        }
+
+        .top-text {
+            font-weight: bold;
+            margin-bottom: 15pt;
+            font-size: 35pt;
+        }
+
+        .bot-text {
+            font-weight: bold;
+            margin-bottom: 15pt;
+            font-size: 65pt;
+        }
+
+        .time-text {
+            margin-bottom: 15pt;
+            font-size: 15pt;
+        }
+
+        .info-text {
+            margin-bottom: 15pt;
+            font-size: 15pt;
+        }
+    </style>
+</head>
+
+<body style="background-color: {{ color }};">
+    <div>
+        <p class="top-text">
+            {{ status_text1 }}
+        </p>
+        <p class="bot-text">
+            {{ status_text2 }}
+        </p>
+        <p class="time-text">
+            {{ time_text }}
+        </p>
+        <p class="info-text">
+            {{ info_text }}
+        </p>
+    </div>
+</body>
+</html>
