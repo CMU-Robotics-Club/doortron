@@ -1,6 +1,7 @@
 import os
 import time
 from flask import Flask, render_template, request, redirect
+from flask_cors import CORS, cross_origin
 import threading
 from datetime import datetime
 
@@ -23,6 +24,8 @@ with open("templates/open.svg") as f: SVGS[STATE_OPEN] = f.read()
 with open("templates/unknown.svg") as f: SVGS[STATE_ERROR] = f.read()
 
 app = Flask(__name__)
+cors = CORS(app)
+app.config['CORS_HEADERS'] = 'Content-Type'
 
 with open("key.txt") as f:
     THE_KEY = f.read().strip()
@@ -43,6 +46,7 @@ def update1():
     return "OK"
 
 @app.route("/widget")
+@cross_origin()
 def widget():
     state = m_status[0]
     if time.time() - m_status[1] > 600:
