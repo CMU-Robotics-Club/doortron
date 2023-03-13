@@ -10,9 +10,6 @@ app = Flask(__name__)
 with open("key.txt") as f:
     key = f.read()
 
-with open("index.html") as f:
-    html = f.read()
-
 @app.route("/")
 def index():
     return "good"
