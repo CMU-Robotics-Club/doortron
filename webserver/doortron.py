@@ -1,5 +1,6 @@
 import os
 import time
+import json
 from flask import Flask, render_template, request, redirect
 from flask_cors import CORS, cross_origin
 import threading
@@ -55,6 +56,23 @@ def widget():
     ts = fmttime(m_status[1])
 
     return render_template("widget.html", the_svg=SVGS[state].replace("__TIMESTAMP__", ts))
+
+@app.route("/api")
+@cross_origin()
+def api():
+    state = m_status[0]
+    if time.time() - m_status[1] > 600:
+        state = STATE_ERROR
+
+    if state == STATE_OPEN:
+        state_name = "open"
+    elif state == STATE_CLOSED:
+        state_name = "closed"
+    elif state == STATE_ERROR:
+        state_name = "unknown"
+    return json.dumps({
+        "state": state_name
+    })
 
 @app.route("/")
 def index():
