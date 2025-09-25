@@ -22,38 +22,35 @@
         :root {
             color: var(--fg);
             background: var(--bg);
+            font-family: sans-serif;
         }
 
         p {
             width: 100%;
             text-align: center;
             margin-top: 0;
-            margin-bottom: 0;
-            color: white;
-            opacity: 0.8;
-            font-family: sans-serif;
+            margin-bottom: 15pt;
+            font-size: 15pt;
         }
 
-        .top-text {
+        table {
+            margin: 0 auto;
+            overflow-y: scroll;
+        }
+
+        td {
+            width: 6em;
+            height: 1em;
+        }
+
+        .top {
             font-weight: bold;
-            margin-bottom: 15pt;
             font-size: 35pt;
         }
 
-        .bot-text {
+        .bottom {
             font-weight: bold;
-            margin-bottom: 15pt;
             font-size: 65pt;
-        }
-
-        .time-text {
-            margin-bottom: 15pt;
-            font-size: 15pt;
-        }
-
-        .info-text {
-            margin-bottom: 15pt;
-            font-size: 15pt;
         }
     </style>
 </head>
@@ -61,22 +58,21 @@
 <body>
     <div>
         {% if door_state == "unknown" %}
-            <p class="info-text">
+            <p>
                 The DoorTron system is currently offline, if this persists for more than 5 minutes please notify an officer
             </p>
         {% else %}
-            <p class="top-text">
+            <p class="top">
                 Roboclub is...
             </p>
 
-            <p class="bot-text">
+            <p class="bottom">
                 {{ door_state.upper() }}
             </p>
 
-            <p class="time-text">
-                (last updated {{ last_updated.strftime("%-I:%M %p, %b %-d") }})
-            </p>
-            <p class="info-text">
+            <p>(last updated {{ last_updated.strftime("%-I:%M %p, %b %-d") }})</p>
+
+            <p>
                 {% if door_state == "open" %}
                     This means there's an officer at the club, feel free to drop by :D
                 {% elif door_state == "open" %}
@@ -84,6 +80,31 @@
                 {% endif %}
             </p>
         {% endif %}
+
+        <p>Heatmap</p>
+        <table>
+            <tr>
+                <th scope="col">Hour</th>
+                <th scope="col">Sunday</th>
+                <th scope="col">Monday</th>
+                <th scope="col">Tuesday</th>
+                <th scope="col">Wednesday</th>
+                <th scope="col">Thursday</th>
+                <th scope="col">Friday</th>
+                <th scope="col">Saturday</th>
+            </tr>
+
+            {% for hour in range(0, 24) %}
+                <tr>
+                    <th scope="row">{{ "{:02}".format(hour) }}:00</th>
+
+                    {% for day in [6, 0, 1, 2, 3, 4, 5] %}
+                        {% set hex = "{:02x}".format(heatmap[day, hour]) %}
+                        <td style="background: #{{ hex }}{{ hex }}{{ hex }}"></td>
+                    {% endfor %}
+                </tr>
+            {% endfor %}
+        </table>
     </div>
 </body>
 </html>
