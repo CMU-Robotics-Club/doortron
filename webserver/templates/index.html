@@ -1,3 +1,6 @@
+{% set day_names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"] %}
+{% set day_order = [6, 0, 1, 2, 3, 4, 5] %}
+
 <!DOCTYPE html>
 <html class="{{ door_state }}">
 <head>
@@ -52,6 +55,10 @@
             font-weight: bold;
             font-size: 65pt;
         }
+
+        .now {
+            background: #AA6C39;
+        }
     </style>
 </head>
 
@@ -83,22 +90,25 @@
 
         <p>Heatmap</p>
         <table>
+            <colgroup>
+                <col></col>
+                {% for day in day_order %}
+                    <col {% if now.weekday() == day %}class="now"{% endif %}></col>
+                {% endfor %}
+            </colgroup>
             <tr>
                 <th scope="col">Hour</th>
-                <th scope="col">Sunday</th>
-                <th scope="col">Monday</th>
-                <th scope="col">Tuesday</th>
-                <th scope="col">Wednesday</th>
-                <th scope="col">Thursday</th>
-                <th scope="col">Friday</th>
-                <th scope="col">Saturday</th>
+
+                {% for day in day_order %}
+                    <th scope="col">{{ day_names[day] }}</th>
+                {% endfor %}
             </tr>
 
             {% for hour in range(0, 24) %}
-                <tr>
+            <tr {% if now.hour == hour %}class="now"{% endif %}>
                     <th scope="row">{{ "{:02}".format(hour) }}:00</th>
 
-                    {% for day in [6, 0, 1, 2, 3, 4, 5] %}
+                    {% for day in day_order %}
                         {% set hex = "{:02x}".format(heatmap[day, hour]) %}
                         <td style="background: #{{ hex }}{{ hex }}{{ hex }}"></td>
                     {% endfor %}

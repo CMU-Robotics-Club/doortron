@@ -17,13 +17,13 @@ last_updated = datetime.now()
 # attempt to load persisted heatmap
 try:
     with open("heatmap.npy", "rb") as f:
-        heatmap_raw = np.load(f)
+        heatmap_raw = np.load(f).astype("uint64")
     assert heatmap_raw.shape == (7, 24)
 except Exception as e:
     print(f"failed to load heatmap: {e}")
     print("creating new blank heatmap")
     # 7×24 array to track door open minutes
-    heatmap_raw = np.zeros((7, 24), dtype=int)
+    heatmap_raw = np.zeros((7, 24), dtype="uint64")
 
 # webapp stuff
 
@@ -88,6 +88,7 @@ async def index():
         door_state=door_state,
         last_updated=last_updated,
         heatmap=heatmap,
+        now=datetime.now(),
     )
 
 @app.before_serving
