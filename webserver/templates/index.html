@@ -1,10 +1,29 @@
-<html>
+<!DOCTYPE html>
+<html class="{{ door_state }}">
 <head>
     <title>Doortron</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta http-equiv="refresh" content="30">
 
     <style>
+        :root.unknown {
+            --bg: #444;
+            --fg: white;
+        }
+        :root.open {
+            --bg: #006400;
+            --fg: white;
+        }
+        :root.closed {
+            --bg: #8b0000;
+            --fg: white;
+        }
+
+        :root {
+            color: var(--fg);
+            background: var(--bg);
+        }
+
         p {
             width: 100%;
             text-align: center;
@@ -39,20 +58,32 @@
     </style>
 </head>
 
-<body style="background-color: {{ color }};">
+<body>
     <div>
-        <p class="top-text">
-            {{ status_text1 }}
-        </p>
-        <p class="bot-text">
-            {{ status_text2 }}
-        </p>
-        <p class="time-text">
-            {{ time_text }}
-        </p>
-        <p class="info-text">
-            {{ info_text }}
-        </p>
+        {% if door_state == "unknown" %}
+            <p class="info-text">
+                The DoorTron system is currently offline, if this persists for more than 5 minutes please notify an officer
+            </p>
+        {% else %}
+            <p class="top-text">
+                Roboclub is...
+            </p>
+
+            <p class="bot-text">
+                {{ door_state.upper() }}
+            </p>
+
+            <p class="time-text">
+                (last updated {{ last_updated.strftime("%-I:%M %p, %b %-d") }})
+            </p>
+            <p class="info-text">
+                {% if door_state == "open" %}
+                    This means there's an officer at the club, feel free to drop by :D
+                {% elif door_state == "open" %}
+                    Contact an officer if you would like to get into the club.
+                {% endif %}
+            </p>
+        {% endif %}
     </div>
 </body>
 </html>
