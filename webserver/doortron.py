@@ -7,6 +7,8 @@ from quart import Quart, render_template
 from quart_cors import cors, route_cors
 import asyncio
 
+from viridis import viridis
+
 # state
 
 with open("key.txt") as f:
@@ -82,6 +84,9 @@ async def index():
     maxpt = np.max(heatmap_raw)
     if maxpt > 0:
         heatmap = (heatmap_raw / maxpt * 255).astype("u1")
+        heatmap = viridis[heatmap]
+    else:
+        heatmap = np.full((7, 24), viridis[0])
 
     return await render_template(
         "index.html",

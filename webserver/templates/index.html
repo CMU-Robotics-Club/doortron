@@ -28,12 +28,16 @@
             font-family: sans-serif;
         }
 
-        p {
+        p, h1, h2 {
             width: 100%;
             text-align: center;
             margin-top: 0;
             margin-bottom: 15pt;
             font-size: 15pt;
+        }
+
+        h2 {
+            font-size: 35pt;
         }
 
         table {
@@ -69,9 +73,9 @@
                 The DoorTron system is currently offline, if this persists for more than 5 minutes please notify an officer
             </p>
         {% else %}
-            <p class="top">
+            <h1 class="top">
                 Roboclub is...
-            </p>
+            </h1>
 
             <p class="bottom">
                 {{ door_state.upper() }}
@@ -88,7 +92,8 @@
             </p>
         {% endif %}
 
-        <p>Heatmap (Black = Closed, White = Open)</p>
+        <h2>Heatmap</h2>
+        <p>(Purple = Closed, Yellow = Open)</p>
         <table>
             <colgroup>
                 <col></col>
@@ -109,8 +114,7 @@
                     <th scope="row">{{ "{:02}".format(hour) }}:00</th>
 
                     {% for day in day_order %}
-                        {% set hex = "{:02x}".format(heatmap[day, hour]) %}
-                        <td style="background: #{{ hex }}{{ hex }}{{ hex }}"></td>
+                        <td style="background: {{ heatmap[day, hour] }}"></td>
                     {% endfor %}
                 </tr>
             {% endfor %}
