@@ -3,12 +3,14 @@
 #include <ESP8266HTTPClient.h>
 #include <WiFiClient.h>
 
-#define M_URL0 "http://doortron.roboclub.org/update/KEYREMOVED/0"
-#define M_URL1 "http://doortron.roboclub.org/update/KEYREMOVED/1"
+#define ENDPOINT "http://doortron.roboclub.org/update"
+#define URL0 (ENDPOINT "/" THE_KEY "/0")
+#define URL1 (ENDPOINT "/" THE_KEY "/1")
 
 void setup() {
 
   Serial.begin(115200);
+  Serial.println();
   Serial.println(WiFi.macAddress());
   Serial.print("Connecting");
 
@@ -41,9 +43,9 @@ void loop() {
 
     int q = digitalRead(D5);
     Serial.println(q);
-    const char *murl = q ? M_URL0 : M_URL1;
-    
-    if (http.begin(client, murl)) {
+    const char *url = q ? URL1 : URL0;
+
+    if (http.begin(client, url)) {
 
 
       Serial.print("[HTTP] GET...\n");
