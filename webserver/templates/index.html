@@ -88,7 +88,7 @@
             </p>
         {% endif %}
 
-        <p>Heatmap</p>
+        <p>Heatmap (Black = Closed, White = Open)</p>
         <table>
             <colgroup>
                 <col></col>
@@ -105,7 +105,7 @@
             </tr>
 
             {% for hour in range(0, 24) %}
-            <tr {% if now.hour == hour %}class="now"{% endif %}>
+                <tr {% if now.hour == hour %}class="now"{% endif %}>
                     <th scope="row">{{ "{:02}".format(hour) }}:00</th>
 
                     {% for day in day_order %}

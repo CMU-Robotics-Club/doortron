@@ -17,13 +17,13 @@ last_updated = datetime.now()
 # attempt to load persisted heatmap
 try:
     with open("heatmap.npy", "rb") as f:
-        heatmap_raw = np.load(f).astype("uint64")
+        heatmap_raw = np.load(f).astype("uint32")
     assert heatmap_raw.shape == (7, 24)
 except Exception as e:
     print(f"failed to load heatmap: {e}")
     print("creating new blank heatmap")
-    # 7×24 array to track door open minutes
-    heatmap_raw = np.zeros((7, 24), dtype="uint64")
+    # 7 days * 24 hours array to track door open minutes
+    heatmap_raw = np.zeros((7, 24), dtype="uint32")
 
 # webapp stuff
 
@@ -67,13 +67,13 @@ async def update(state):
 @app.route("/api")
 @route_cors()
 async def api():
-    return json.dumps({"state": door_state})
+    return {"state": door_state}
 
 @app.route("/heatmap")
 @route_cors()
 async def get_heatmap():
-    """Expose the heatmap heatmap as JSON (7×24)"""
-    return json.dumps(heatmap.tolist())
+    """Expose the heatmap as JSON (7×24)"""
+    return heatmap_raw.tolist()
 
 @app.route("/")
 async def index():
