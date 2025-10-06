@@ -6,10 +6,16 @@ from datetime import datetime, timedelta
 from quart import Quart, render_template
 from quart_cors import cors, route_cors
 import asyncio
+import logging
+from systemd import journal
 
 from viridis import viridis
 
 # state stuff
+
+log = logging.getLogger('doortron_py')
+log.addHandler(journal.JournaldLogHandler())
+log.setLevel(logging.INFO)
 
 with open("key.json") as f:
     keys = json.load(f)
@@ -38,25 +44,48 @@ def last_updated():
 try:
     with open("heatmap.npy", "rb") as f:
         heatmap_raw = np.load(f).astype("uint32")
-    assert heatmap_raw.shape == (7, 24)
+    assert heatmap_raw.shape == (6, 7, 24, 2)
 except Exception as e:
-    print(f"failed to load heatmap: {e}")
+    print(f"failed to load heatmap and minutes: {e}")
     print("creating new blank heatmap")
     # 7 days * 24 hours array to track door open minutes
-    heatmap_raw = np.zeros((7, 24), dtype="uint32")
+    heatmap_raw = np.zeros((6, 7, 24, 2), dtype="uint32")
 
 # tasks
+
+async def task_roll_heatmap():
+    global heatmap_raw
+    while True:
+        now = datetime.now()
+        # Find the next Sunday (weekday=6 for Sunday)
+        days_ahead = (6 - now.weekday()) % 7  # how many days until next Sunday
+        next_sunday = (now + timedelta(days=days_ahead)).replace(hour=0, minute=0, second=0, microsecond=0)
+
+        # If it's already Sunday midnight, schedule for next week
+        if next_sunday <= now:
+            next_sunday += timedelta(weeks=1)
+
+        # Compute sleep duration
+        sleep_seconds = (next_sunday - now).total_seconds()
+        await asyncio.sleep(sleep_seconds)
+
+        # Run your task
+        heatmap_raw = heatmap_raw[1:, :, :, :]
+        heatmap_raw = np.concatenate([heatmap_raw, np.zeros(1, 7, 24, 2)])
+        
 
 async def task_heatmap():
     """Runs once a minute: if door is open, increment the heatmap bucket."""
     global heatmap_raw
     while True:
         await asyncio.sleep(60)  # wait 1 minute
-        if door_state == "open":
-            now = datetime.now()
-            day_idx = now.weekday()   # 0=Monday … 6=Sunday
-            hour_idx = now.hour       # 0–23
-            heatmap_raw[day_idx, hour_idx] += 1
+        now = datetime.now()
+        day_idx = now.weekday()   # 0=Monday … 6=Sunday
+        hour_idx = now.hour       # 0–23
+        if club_door:
+            heatmap_raw[-1, day_idx, hour_idx, 0] += 1
+        heatmap_raw[-1, day_idx, hour_idx, 1] += 1
+        
         try:
             with open("heatmap.npy", "wb") as f:
                 np.save(f, heatmap_raw)
@@ -107,10 +136,11 @@ async def get_heatmap():
 @app.route("/")
 async def index():
     # compute heatmap
-    heatmap = heatmap_raw
-    maxpt = np.max(heatmap_raw)
-    if maxpt > 0:
-        heatmap = (heatmap_raw / maxpt * 255).astype("u1")
+    heatmap = np.sum(heatmap_raw, axis=0)
+    if np.max(heatmap[:, :, 1]) > 0:
+        heatmap = np.divide(heatmap[:, :, 0], heatmap[:, :, 1], where=heatmap[:, :, 1]!=0)
+        log.info(f"{heatmap.shape}")
+        heatmap = (heatmap * 255).astype("u1")
         heatmap = viridis[heatmap]
     else:
         heatmap = np.full((7, 24), viridis[0])
@@ -126,6 +156,7 @@ async def index():
 @app.before_serving
 async def create_tasks():
     asyncio.create_task(task_heatmap())
+    asyncio.create_task(task_roll_heatmap())
     asyncio.create_task(task_timeout())
 
 if __name__ == "__main__":
