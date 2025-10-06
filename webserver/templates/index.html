@@ -17,6 +17,10 @@
             --bg: #006400;
             --fg: white;
         }
+        :root.open_shop {
+            --bg: #2430bf;
+            --fg: white;
+        }
         :root.closed {
             --bg: #8b0000;
             --fg: white;
@@ -55,7 +59,7 @@
             font-size: 35pt;
         }
 
-        .bottom {
+        .status {
             font-weight: bold;
             font-size: 65pt;
         }
@@ -77,8 +81,12 @@
                 Roboclub is...
             </h1>
 
-            <p class="bottom">
-                {{ door_state.upper() }}
+            <p class="status">
+                {% if door_state == "open_shop" %}
+                    OPEN (+ shop)
+                {% else %} 
+                    {{ door_state.upper() }}
+                {% endif %}
             </p>
 
             <p>(last updated {{ last_updated.strftime("%-I:%M %p, %b %-d") }})</p>

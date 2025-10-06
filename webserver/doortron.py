@@ -9,13 +9,31 @@ import asyncio
 
 from viridis import viridis
 
-# state
+# state stuff
 
-with open("key.txt") as f:
-    THE_KEY = f.read().strip()
+with open("key.json") as f:
+    keys = json.load(f)
 
-door_state = "unknown"
-last_updated = datetime.now()
+club_door = None
+club_last = datetime.now()
+shop_door = None
+shop_last = datetime.now()
+
+def door_state():
+    if club_door is None:
+        return "unknown"
+    elif not club_door:
+        return "closed"
+    elif not shop_door:
+        return "open"
+    else:
+        return "open_shop"
+
+def last_updated():
+    if club_last > shop_last:
+        return club_last
+    return shop_last
+
 # attempt to load persisted heatmap
 try:
     with open("heatmap.npy", "rb") as f:
@@ -27,12 +45,7 @@ except Exception as e:
     # 7 days * 24 hours array to track door open minutes
     heatmap_raw = np.zeros((7, 24), dtype="uint32")
 
-# webapp stuff
-
-app = Quart(__name__)
-app = cors(app)
-app.config['CORS_HEADERS'] = 'Content-Type'
-
+# tasks
 
 async def task_heatmap():
     """Runs once a minute: if door is open, increment the heatmap bucket."""
@@ -52,24 +65,38 @@ async def task_heatmap():
 
 async def task_timeout():
     """Time out state if we haven't been updated in an hour"""
-    global door_state, last_updated
+    global club_door, shop_door
     while True:
         await asyncio.sleep(60)
-        if datetime.now() - last_updated > timedelta(hours=1):
-            door_state = "unknown"
+        if datetime.now() - club_last > timedelta(hours=1):
+            club_door = None
+        if datetime.now() - shop_last > timedelta(hours=1):
+            shop_door = None
 
+# webapp stuff
 
-@app.route(f"/update/{THE_KEY}/<int:state>")
-async def update(state):
-    global door_state, last_updated
-    door_state = "closed" if state == 0 else "open"
-    last_updated = datetime.now()
+app = Quart(__name__)
+app = cors(app)
+app.config['CORS_HEADERS'] = 'Content-Type'
+
+@app.route(f"/update/{keys['club']}/<int:state>")
+async def update_club(state):
+    global club_door, club_last
+    club_door = bool(state)
+    club_last = datetime.now()
+    return "OK"
+
+@app.route(f"/update/{keys['shop']}/<int:state>")
+async def update_shop(state):
+    global shop_door, shop_last
+    shop_door = bool(state)
+    shop_last = datetime.now()
     return "OK"
 
 @app.route("/api")
 @route_cors()
 async def api():
-    return {"state": door_state}
+    return {"state": door_state()}
 
 @app.route("/heatmap")
 @route_cors()
@@ -90,8 +117,8 @@ async def index():
 
     return await render_template(
         "index.html",
-        door_state=door_state,
-        last_updated=last_updated,
+        door_state=door_state(),
+        last_updated=last_updated(),
         heatmap=heatmap,
         now=datetime.now(),
     )
