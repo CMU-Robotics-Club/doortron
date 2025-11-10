@@ -1,4 +1,5 @@
-import os
+import os, os.path
+import shutil
 import time
 import json
 import numpy as np
@@ -48,10 +49,16 @@ def last_updated():
 try:
     with open("heatmap.npy", "rb") as f:
         heatmap_raw = np.load(f).astype("uint32")
-    assert heatmap_raw.shape == (6, 7, 24, 2)
+    assert heatmap_raw.shape[1:] == (7, 24, 2)
     log.info("loaded persisted heatmap")
 except Exception as e:
-    log.error(f"failed to load heatmap and minutes: {e}")
+    log.exception(f"failed to load heatmap: ")
+    # back up old heatmap if failed to load
+    if os.path.isfile("heatmap.npy"):
+        shutil.copy("heatmap.npy", f"heatmap_failed_{time.time()}.npy")
+    if os.path.isfile("heatmap_new.npy"):
+        shutil.copy("heatmap_new.npy", f"heatmap_new_failed_{time.time()}.npy")
+
     log.info("creating new blank heatmap")
     # 6 weeks * 7 days * 24 hours * (open, total)
     heatmap_raw = np.zeros((6, 7, 24, 2), dtype="uint32")
@@ -98,9 +105,11 @@ async def task_heatmap():
         # total minutes
         heatmap_raw[-1, day_idx, hour_idx, 1] += 1
 
+        # save heatmap
         try:
-            with open("heatmap.npy", "wb") as f:
+            with open("heatmap_new.npy", "wb") as f:
                 np.save(f, heatmap_raw)
+            shutil.move("heatmap_new.npy", "heatmap.npy")
         except Exception as e:
             log.error(f"failed to save heatmap: {e}")
 
