@@ -8,6 +8,7 @@ from quart import Quart, render_template
 from quart_cors import cors, route_cors
 import asyncio
 import logging
+import httpx
 
 from viridis import viridis
 
@@ -29,6 +30,8 @@ club_door = None
 club_last = datetime.now()
 shop_door = None
 shop_last = datetime.now()
+
+ledtron_api = "http://ledtron.roboclub.org" # E-bench LEDs
 
 def door_state():
     if club_door is None:
@@ -124,6 +127,18 @@ async def task_timeout():
         if datetime.now() - shop_last > timedelta(hours=1):
             log.warning("shop door timed out!")
             shop_door = None
+            
+"""Update E-bench LEDs"""
+"""state: T=? (1=on, 0=off), PL=? (? is the preset number)"""
+async def update_ledtron(state):
+    global ledtron_api
+    suffix = "win&T=1&PL=1" if state else "win&T=0"
+    url = f"{ledtron_api}/{suffix}"
+    try:
+        async with httpx.AsyncClient() as client:
+            await client.get(url, timeout=2.0)
+    except Exception as e:
+        log.error(f"LEDtron update failed: {e}")
 
 # webapp stuff
 
@@ -134,7 +149,10 @@ app.config['CORS_HEADERS'] = 'Content-Type'
 @app.route(f"/update/{keys['club']}/<int:state>")
 async def update_club(state):
     global club_door, club_last
-    club_door = bool(state)
+    new_state = bool(state)
+    if club_door != new_state:
+        asyncio.create_task(update_ledtron(new_state))
+    club_door = new_state
     club_last = datetime.now()
     return "OK"
 
