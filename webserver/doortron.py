@@ -86,7 +86,7 @@ async def task_roll_heatmap():
 
         # Roll heatmap forward
         heatmap_raw = heatmap_raw[1:, :, :, :]
-        heatmap_raw = np.concatenate([heatmap_raw, np.zeros(1, 7, 24, 2)])
+        heatmap_raw = np.concatenate([heatmap_raw, np.zeros((1, 7, 24, 2))])
 
         log.info("rolled over heatmap")
 
