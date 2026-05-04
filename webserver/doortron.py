@@ -53,6 +53,22 @@ try:
     with open("heatmap.npy", "rb") as f:
         heatmap_raw = np.load(f).astype("uint32")
     assert heatmap_raw.shape[1:] == (7, 24, 2)
+
+    current_weeks = heatmap_raw.shape[0]
+
+    if current_weeks < 6:
+        missing_weeks = 6 - current_weeks
+        # Prepend zeros so the existing data stays at the end (index -1)
+        padding = np.zeros((missing_weeks, 7, 24, 2), dtype="uint32")
+        heatmap_raw = np.concatenate([padding, heatmap_raw])
+        log.info(f"padded heatmap with {missing_weeks} missing week(s)")
+
+    elif current_weeks > 6:
+        # Keep only the 6 most recent weeks
+        heatmap_raw = heatmap_raw[-6:]
+        log.info("truncated heatmap down to 6 weeks")
+
+    assert heatmap_raw.shape == (6, 7, 24, 2)
     log.info("loaded persisted heatmap")
 except Exception as e:
     log.exception(f"failed to load heatmap: ")
