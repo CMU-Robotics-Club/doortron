@@ -1,7 +1,7 @@
 import os, os.path
-import shutil
-import time
 import json
+import sqlite3
+import time
 import numpy as np
 from datetime import datetime, timedelta
 from quart import Quart, render_template
@@ -33,6 +33,34 @@ shop_last = datetime.now()
 
 ledtron_api = "http://ledtron.roboclub.org" # E-bench LEDs
 
+STATE_UNKNOWN = 0
+STATE_CLOSED = 1
+STATE_OPEN = 2
+
+HEATMAP_WEEKS = 6
+HEATMAP_SECONDS = HEATMAP_WEEKS * 7 * 24 * 60 * 60
+DB_RETENTION_SECONDS = 6 * 30 * 24 * 60 * 60
+
+DB_PATH = "db.sqlite3"
+
+def now_ts():
+    return int(time.time())
+
+def ts_to_datetime(ts):
+    return datetime.fromtimestamp(ts)
+
+def current_db_state():
+    if club_door is None:
+        return STATE_UNKNOWN
+    if club_door:
+        return STATE_OPEN
+    return STATE_CLOSED
+
+def next_hour_ts(ts):
+    dt = ts_to_datetime(ts)
+    next_hour = (dt.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1))
+    return int(next_hour.timestamp())
+
 def door_state():
     if club_door is None:
         return "unknown"
@@ -44,93 +72,172 @@ def door_state():
         return "open_shop"
 
 def last_updated():
+    updated_ts = db.get_last_updated()
+    if updated_ts is not None:
+        return ts_to_datetime(updated_ts)
     if club_last > shop_last:
         return club_last
     return shop_last
 
-# attempt to load persisted heatmap
-try:
-    with open("heatmap.npy", "rb") as f:
-        heatmap_raw = np.load(f).astype("uint32")
-    assert heatmap_raw.shape[1:] == (7, 24, 2)
+class DoortronDB:
+    def __init__(self, path):
+        existed = os.path.exists(path)
+        self.conn = sqlite3.connect(path)
+        self.conn.execute("PRAGMA journal_mode=WAL")
+        self.conn.execute("PRAGMA busy_timeout=5000")
+        self.conn.execute("""
+            CREATE TABLE IF NOT EXISTS door_events (
+                ts INTEGER NOT NULL,
+                state INTEGER NOT NULL
+            )
+        """)
+        self.conn.execute("""
+            CREATE TABLE IF NOT EXISTS door_meta (
+                key TEXT PRIMARY KEY,
+                value INTEGER NOT NULL
+            )
+        """)
+        self.conn.execute("CREATE INDEX IF NOT EXISTS idx_door_events_ts ON door_events(ts)")
+        self.conn.commit()
 
-    current_weeks = heatmap_raw.shape[0]
+        startup_ts = now_ts()
+        stored_last_updated = self.get_meta("last_updated")
+        if existed and stored_last_updated is not None:
+            # On init, assume nothing about door state from last db write
+            self.insert_event(stored_last_updated, STATE_UNKNOWN)
 
-    if current_weeks < 6:
-        missing_weeks = 6 - current_weeks
-        # Prepend zeros so the existing data stays at the end (index -1)
-        padding = np.zeros((missing_weeks, 7, 24, 2), dtype="uint32")
-        heatmap_raw = np.concatenate([padding, heatmap_raw])
-        log.info(f"padded heatmap with {missing_weeks} missing week(s)")
+        self.insert_event(startup_ts, current_db_state())
+        self.set_last_updated(startup_ts + 1)
 
-    elif current_weeks > 6:
-        # Keep only the 6 most recent weeks
-        heatmap_raw = heatmap_raw[-6:]
-        log.info("truncated heatmap down to 6 weeks")
+    def get_meta(self, key):
+        row = self.conn.execute("SELECT value FROM door_meta WHERE key = ?", (key,)).fetchone()
+        if row is None:
+            return None
+        return row[0]
 
-    assert heatmap_raw.shape == (6, 7, 24, 2)
-    log.info("loaded persisted heatmap")
-except Exception as e:
-    log.exception(f"failed to load heatmap: ")
-    # back up old heatmap if failed to load
-    if os.path.isfile("heatmap.npy"):
-        shutil.copy("heatmap.npy", f"heatmap_failed_{time.time()}.npy")
-    if os.path.isfile("heatmap_new.npy"):
-        shutil.copy("heatmap_new.npy", f"heatmap_new_failed_{time.time()}.npy")
+    def set_meta(self, key, value):
+        self.conn.execute(
+            "INSERT INTO door_meta(key, value) VALUES(?, ?) "
+            "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            (key, int(value)),
+        )
+        self.conn.commit()
 
-    log.info("creating new blank heatmap")
-    # 6 weeks * 7 days * 24 hours * (open, total)
-    heatmap_raw = np.zeros((6, 7, 24, 2), dtype="uint32")
+    def get_last_updated(self):
+        return self.get_meta("last_updated")
+
+    def set_last_updated(self, ts):
+        self.set_meta("last_updated", ts)
+
+    def insert_event(self, ts, state):
+        self.conn.execute(
+            "INSERT INTO door_events(ts, state) VALUES(?, ?)",
+            (int(ts), int(state)),
+        )
+        self.conn.commit()
+        self.last_insert_ts = int(ts)
+        self.last_insert_state = int(state)
+
+    def persist_current_state(self, ts, state):
+        if (
+            self.last_insert_ts is None
+            or self.last_insert_state != state
+            # Add at least one record every hour, even if unchanged
+            or ts - self.last_insert_ts > 60 * 60
+        ):
+            self.insert_event(ts, state)
+        # last_updated is ts+1, to prevent unknown record from startup having same timestamp as another door event
+        self.set_last_updated(ts+1)
+
+    def cleanup(self, cutoff_ts):
+        self.conn.execute("DELETE FROM door_events WHERE ts < ?", (int(cutoff_ts),))
+        self.conn.commit()
+
+    def heatmap_events(self, cutoff_ts):
+        # door state at the start of the window
+        prior = self.conn.execute(
+            "SELECT ts, state FROM door_events WHERE ts < ? ORDER BY ts DESC, rowid DESC LIMIT 1",
+            (int(cutoff_ts),),
+        ).fetchone()
+        events = self.conn.execute(
+            "SELECT ts, state FROM door_events WHERE ts >= ? ORDER BY ts ASC, rowid ASC",
+            (int(cutoff_ts),),
+        ).fetchall()
+        return prior, events
+
+db = DoortronDB(DB_PATH)
+heatmap_raw = np.zeros((HEATMAP_WEEKS, 7, 24, 2), dtype="uint32")
+heatmap_colors = viridis[np.zeros((7, 24), dtype="u1")]
 
 # tasks
 
-async def task_roll_heatmap():
-    global heatmap_raw
+def add_heatmap_interval(raw, start_ts, end_ts, state, window_start_ts):
+    if state == STATE_UNKNOWN or end_ts <= start_ts:
+        return
+
+    current_ts = start_ts
+    while current_ts < end_ts:
+        dt = ts_to_datetime(current_ts)
+        bucket_end_ts = min(end_ts, next_hour_ts(current_ts))
+        week_idx = int((current_ts - window_start_ts) // (7 * 24 * 60 * 60))
+        if 0 <= week_idx < HEATMAP_WEEKS:
+            day_idx = dt.weekday()
+            hour_idx = dt.hour
+            seconds = bucket_end_ts - current_ts
+            if state == STATE_OPEN:
+                raw[week_idx, day_idx, hour_idx, 0] += seconds
+            if state in (STATE_OPEN, STATE_CLOSED):
+                raw[week_idx, day_idx, hour_idx, 1] += seconds
+        current_ts = bucket_end_ts
+
+def compute_heatmap():
+    global heatmap_raw, heatmap_colors
+
+    end_ts = now_ts()
+    window_start_ts = end_ts - HEATMAP_SECONDS
+    new_heatmap_raw = np.zeros((HEATMAP_WEEKS, 7, 24, 2), dtype="uint32")
+    prior, events = db.heatmap_events(window_start_ts)
+
+    state = STATE_UNKNOWN if prior is None else prior[1]
+    interval_start = window_start_ts
+
+    for event_ts, event_state in events:
+        clamped_event_ts = min(max(event_ts, window_start_ts), end_ts)
+        add_heatmap_interval(new_heatmap_raw, interval_start, clamped_event_ts, state, window_start_ts)
+        interval_start = clamped_event_ts
+        state = event_state
+
+    add_heatmap_interval(new_heatmap_raw, interval_start, end_ts, state, window_start_ts)
+
+    all_weeks = np.sum(new_heatmap_raw, axis=0)
+    heatmap = np.zeros((7, 24)) # initialize to zeros to avoid uninit
+    np.divide(
+        all_weeks[:, :, 0], all_weeks[:, :, 1],
+        out=heatmap,
+        where=all_weeks[:, :, 1] != 0, # when false, use existing value (0)
+    )
+    heatmap = np.clip(heatmap, 0, 1)
+
+    heatmap_raw = new_heatmap_raw
+    heatmap_colors = viridis[(heatmap * 255).astype("u1")]
+
+async def task_persist_state():
     while True:
-        now = datetime.now()
-        # Find the next Sunday (weekday=6 for Sunday)
-        days_ahead = (6 - now.weekday()) % 7  # how many days until next Sunday
-        next_sunday = (now + timedelta(days=days_ahead)).replace(hour=0, minute=0, second=0, microsecond=0)
-
-        # If it's already Sunday midnight, schedule for next week
-        if next_sunday <= now:
-            next_sunday += timedelta(weeks=1)
-
-        # Compute sleep duration
-        sleep_seconds = (next_sunday - now).total_seconds()
-        await asyncio.sleep(sleep_seconds)
-
-        # Roll heatmap forward
-        heatmap_raw = heatmap_raw[1:, :, :, :]
-        heatmap_raw = np.concatenate([heatmap_raw, np.zeros((1, 7, 24, 2))])
-
-        log.info("rolled over heatmap")
-
-        # Note: even though the roll-over won't happen in the case that Doortron is turned off during
-        # Sunday midnight, that shouldn't be a problem (in that case one week's table will just contain
-        # 2 weeks' worth of data, but it will average out and eventually be cleared the same way)
+        await asyncio.sleep(60)
+        ts = now_ts()
+        try:
+            db.persist_current_state(ts, current_db_state())
+            db.cleanup(ts - DB_RETENTION_SECONDS)
+        except Exception as e:
+            log.error(f"failed to persist door state: {e}")
 
 async def task_heatmap():
-    """Runs once a minute: if door is open, increment the heatmap bucket."""
-    global heatmap_raw
     while True:
-        await asyncio.sleep(60)  # wait 1 minute
-        now = datetime.now()
-        day_idx = now.weekday()   # 0=Monday … 6=Sunday
-        hour_idx = now.hour       # 0–23
-        # open minutes
-        if club_door:
-            heatmap_raw[-1, day_idx, hour_idx, 0] += 1
-        # total minutes
-        heatmap_raw[-1, day_idx, hour_idx, 1] += 1
-
-        # save heatmap
+        await asyncio.sleep(5 * 60)
         try:
-            with open("heatmap_new.npy", "wb") as f:
-                np.save(f, heatmap_raw)
-            shutil.move("heatmap_new.npy", "heatmap.npy")
+            compute_heatmap()
         except Exception as e:
-            log.error(f"failed to save heatmap: {e}")
+            log.error(f"failed to compute heatmap: {e}")
 
 async def task_timeout():
     """Time out state if we haven't been updated in an hour"""
@@ -143,7 +250,7 @@ async def task_timeout():
         if datetime.now() - shop_last > timedelta(hours=1):
             log.warning("shop door timed out!")
             shop_door = None
-            
+
 """Update E-bench LEDs"""
 """state: T=? (1=on, 0=off), PL=? (? is the preset number)"""
 async def update_ledtron(state):
@@ -192,31 +299,19 @@ async def get_heatmap():
 
 @app.route("/")
 async def index():
-    # compute heatmap
-    all_weeks = np.sum(heatmap_raw, axis=0)
-    heatmap = np.zeros((7, 24)) # initialize to zeros to avoid uninit
-    np.divide(
-        all_weeks[:, :, 0], all_weeks[:, :, 1],
-        out=heatmap,
-        where=all_weeks[:, :, 1] != 0, # when false, use existing value (0)
-    )
-    heatmap = np.clip(heatmap, 0, 1)
-
-    heatmap = (heatmap * 255).astype("u1")
-    heatmap = viridis[heatmap]
-
     return await render_template(
         "index.html",
         door_state=door_state(),
         last_updated=last_updated(),
-        heatmap=heatmap,
+        heatmap=heatmap_colors,
         now=datetime.now(),
     )
 
 @app.before_serving
 async def create_tasks():
+    compute_heatmap()
+    asyncio.create_task(task_persist_state())
     asyncio.create_task(task_heatmap())
-    asyncio.create_task(task_roll_heatmap())
     asyncio.create_task(task_timeout())
 
 if __name__ == "__main__":
