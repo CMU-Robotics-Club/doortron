@@ -232,7 +232,7 @@ async def task_persist_state():
         ts = now_ts()
         try:
             db.persist_current_state(ts, current_db_state())
-            db.cleanup(ts - DB_RETENTION_SECONDS)
+            # db.cleanup(ts - DB_RETENTION_SECONDS)
         except Exception as e:
             log.error(f"failed to persist door state: {e}")
 
