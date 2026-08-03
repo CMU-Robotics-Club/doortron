@@ -67,10 +67,20 @@
         .now {
             background: #AA6C39;
         }
+
+        .uptime {
+            position: fixed;
+            top: 4px;
+            right: 6px;
+            font-size: 9pt;
+            opacity: 0.6;
+        }
     </style>
 </head>
 
 <body>
+    <span class="uptime">{{ uptime }}% uptime</span>
+
     <div>
         {% if door_state == "unknown" %}
             <p>

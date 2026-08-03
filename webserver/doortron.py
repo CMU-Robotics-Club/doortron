@@ -168,6 +168,7 @@ class DoortronDB:
 db = DoortronDB(DB_PATH)
 heatmap_raw = np.zeros((HEATMAP_WEEKS, 7, 24, 2), dtype="uint32")
 heatmap_colors = viridis[np.zeros((7, 24), dtype="u1")]
+uptime_percent = 0.0
 
 # tasks
 
@@ -191,7 +192,7 @@ def add_heatmap_interval(raw, start_ts, end_ts, state, window_start_ts):
         current_ts = bucket_end_ts
 
 def compute_heatmap():
-    global heatmap_raw, heatmap_colors
+    global heatmap_raw, heatmap_colors, uptime_percent
 
     end_ts = now_ts()
     window_start_ts = end_ts - HEATMAP_SECONDS
@@ -220,6 +221,10 @@ def compute_heatmap():
 
     heatmap_raw = new_heatmap_raw
     heatmap_colors = viridis[(heatmap * 255).astype("u1")]
+
+    # unknown time is never recorded in either slot, so known/window == 1 - unknown/window
+    known_seconds = int(new_heatmap_raw[:, :, :, 1].sum())
+    uptime_percent = 100.0 * known_seconds / HEATMAP_SECONDS
 
 async def task_persist_state():
     while True:
@@ -304,6 +309,7 @@ async def index():
         door_state=door_state(),
         last_updated=last_updated(),
         heatmap=heatmap_colors,
+        uptime=f"{uptime_percent:.3f}",
         now=datetime.now(),
     )
 
